@@ -231,6 +231,7 @@ class AutoClickerApp(ctk.CTk):
 
         self.title("Advanced Auto Clicker")
         self.geometry("650x750")
+        self.minsize(550, 650)
         self.resizable(True, True)
 
         # State
@@ -260,17 +261,19 @@ class AutoClickerApp(ctk.CTk):
         
         ctk.CTkLabel(self.coord_frame, text="Sequence Setup (Press F2 to Record)", font=("Arial", 16, "bold")).pack(pady=5)
         
-        self.listbox_frame = ctk.CTkScrollableFrame(self.coord_frame, height=150)
-        self.listbox_frame.pack(fill="x", padx=10, pady=5)
-        
+        # Pack bottom buttons first
         btn_frame = ctk.CTkFrame(self.coord_frame, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=10, pady=5)
+        btn_frame.pack(side="bottom", fill="x", padx=10, pady=5)
         
         self.record_btn = ctk.CTkButton(btn_frame, text="Record Coordinates (F2)", command=self.manual_record_click)
         self.record_btn.pack(side="left", padx=5, expand=True, fill="x")
         
         self.clear_btn = ctk.CTkButton(btn_frame, text="Clear All", command=self.clear_coords)
         self.clear_btn.pack(side="left", padx=5, expand=True, fill="x")
+
+        # Pack listbox last to fill remaining flexible space
+        self.listbox_frame = ctk.CTkScrollableFrame(self.coord_frame)
+        self.listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         # --- SETTINGS SECTION ---
         self.settings_frame = ctk.CTkFrame(self)
