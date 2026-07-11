@@ -34,6 +34,7 @@ class BotLogic:
         self.clicker_thread = None
         self.watcher_thread = None
         self.is_running = False
+        self.mouse_controller = mouse.Controller()
 
     def start(self):
         if self.is_running:
@@ -86,7 +87,8 @@ class BotLogic:
                     break
                     
                 self.log_callback(f"Clicking Point {i+1}: ({x}, {y})")
-                pyautogui.click(x, y)
+                self.mouse_controller.position = (x, y)
+                self.mouse_controller.click(mouse.Button.left, 1)
                 
                 # Use wait for timeout so we can exit instantly if stop_event is set
                 if self.stop_event.wait(delay):
