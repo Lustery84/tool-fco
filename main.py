@@ -330,7 +330,7 @@ class AutoClickerApp(ctk.CTk):
         self.tol_label.configure(text=f"{val:.1f}%")
 
     def manual_record_click(self):
-        self.recording_mode = True
+        self.after(100, lambda: setattr(self, 'recording_mode', True))
         self.log_message("Recording mode: ON. Click anywhere or press F2 to capture.")
 
     def on_mouse_click(self, x, y, button, pressed):
