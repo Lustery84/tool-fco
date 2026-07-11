@@ -1,0 +1,6 @@
+customtkinter
+pynput
+pyautogui
+mss
+opencv-python
+numpy
