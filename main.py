@@ -34,7 +34,43 @@ import tkinter as tk
 
 # Set up customtkinter appearance
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("green")
+
+original_btn = ctk.CTkButton
+class RetroButton(original_btn):
+    def __init__(self, *args, **kwargs):
+        if "fg_color" not in kwargs and "hover_color" not in kwargs:
+            kwargs.setdefault("fg_color", "#1A1A1A")
+            kwargs.setdefault("hover_color", "#333333")
+        kwargs.setdefault("text_color", "#00FF00")
+        kwargs.setdefault("corner_radius", 0)
+        super().__init__(*args, **kwargs)
+ctk.CTkButton = RetroButton
+
+original_lbl = ctk.CTkLabel
+class RetroLabel(original_lbl):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("text_color", "#00FF00")
+        super().__init__(*args, **kwargs)
+ctk.CTkLabel = RetroLabel
+
+original_tb = ctk.CTkTextbox
+class RetroTextbox(original_tb):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("fg_color", "#1A1A1A")
+        kwargs.setdefault("text_color", "#00FF00")
+        kwargs.setdefault("corner_radius", 0)
+        super().__init__(*args, **kwargs)
+ctk.CTkTextbox = RetroTextbox
+
+original_entry = ctk.CTkEntry
+class RetroEntry(original_entry):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("fg_color", "#1A1A1A")
+        kwargs.setdefault("text_color", "#00FF00")
+        kwargs.setdefault("corner_radius", 0)
+        super().__init__(*args, **kwargs)
+ctk.CTkEntry = RetroEntry
 
 class BotLogic:
     def __init__(self, log_callback, get_coordinates, get_delay, get_loops, get_stop_region, get_tolerance, get_check_delay, get_schedule_rules, is_schedule_enabled):
@@ -282,6 +318,7 @@ class AutoClickerApp(ctk.CTk):
         self.recording_mode = False
         self.stop_region_info = None
         self.schedule_rules_list = []
+        self.is_schedule_active_flag = False
         self.bot = BotLogic(
             log_callback=self.log_message,
             get_coordinates=lambda: self.coordinates,
@@ -354,7 +391,7 @@ class AutoClickerApp(ctk.CTk):
         ctk.CTkLabel(self.schedule_frame, text="Advanced Odd/Even Hour Scheduler", font=("Arial", 16, "bold")).pack(pady=5)
         
         self.use_schedule_var = ctk.BooleanVar(value=False)
-        self.schedule_cb = ctk.CTkCheckBox(self.schedule_frame, text="Enable Schedule", variable=self.use_schedule_var)
+        self.schedule_cb = ctk.CTkCheckBox(self.schedule_frame, text="Enable Schedule", variable=self.use_schedule_var, command=self.update_schedule_flag)
         self.schedule_cb.pack(pady=5)
         
         # Input Row
@@ -509,7 +546,10 @@ class AutoClickerApp(ctk.CTk):
             return 0.5
 
     def is_schedule_enabled(self):
-        return self.use_schedule_var.get()
+        return self.is_schedule_active_flag
+
+    def update_schedule_flag(self):
+        self.is_schedule_active_flag = self.use_schedule_var.get()
 
     def get_schedule_rules(self):
         return self.schedule_rules_list
