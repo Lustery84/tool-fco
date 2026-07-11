@@ -135,7 +135,12 @@ class BotLogic:
                 current_img = np.array(sct_img)
                 current_gray = cv2.cvtColor(current_img, cv2.COLOR_BGRA2GRAY)
                 
-                diff = cv2.absdiff(baseline, current_gray)
+                # Apply binary thresholding to isolate text from background noise
+                thresh_val = 150
+                _, baseline_thresh = cv2.threshold(baseline, thresh_val, 255, cv2.THRESH_BINARY)
+                _, current_thresh = cv2.threshold(current_gray, thresh_val, 255, cv2.THRESH_BINARY)
+                
+                diff = cv2.absdiff(baseline_thresh, current_thresh)
                 diff_mean = np.mean(diff)
                 diff_percentage = (diff_mean / 255.0) * 100.0
                 
