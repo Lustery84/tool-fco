@@ -23,6 +23,7 @@ except Exception:
 
 import threading
 import time
+import datetime
 import cv2
 import numpy as np
 import mss
@@ -36,7 +37,7 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class BotLogic:
-    def __init__(self, log_callback, get_coordinates, get_delay, get_loops, get_stop_region, get_tolerance, get_check_delay):
+    def __init__(self, log_callback, get_coordinates, get_delay, get_loops, get_stop_region, get_tolerance, get_check_delay, get_schedule_rules, is_schedule_enabled):
         self.log_callback = log_callback
         self.get_coordinates = get_coordinates
         self.get_delay = get_delay
@@ -44,6 +45,9 @@ class BotLogic:
         self.get_stop_region = get_stop_region
         self.get_tolerance = get_tolerance
         self.get_check_delay = get_check_delay
+        self.get_schedule_rules = get_schedule_rules
+        self.is_schedule_enabled = is_schedule_enabled
+        self.last_wait_log_time = 0
         
         self.stop_event = threading.Event()
         self.clicker_thread = None
@@ -77,6 +81,26 @@ class BotLogic:
         self.is_running = False
         self.log_callback(f"Bot Stopped: {reason}")
 
+    def _is_scheduled_time_active(self):
+        if not self.is_schedule_enabled():
+            return True
+        rules = self.get_schedule_rules()
+        if not rules:
+            return True
+            
+        now = datetime.datetime.now()
+        is_odd = (now.hour % 2 != 0)
+        curr_min = now.minute
+        
+        for rule in rules:
+            try:
+                if (rule['type'] == 'Odd' and is_odd) or (rule['type'] == 'Even' and not is_odd):
+                    if rule['start'] <= curr_min <= rule['end']:
+                        return True
+            except:
+                pass
+        return False
+
     def _clicker_loop(self):
         coords = self.get_coordinates()
         delay = self.get_delay()
@@ -84,6 +108,14 @@ class BotLogic:
         
         current_loop = 0
         while not self.stop_event.is_set():
+            if not self._is_scheduled_time_active():
+                now = time.time()
+                if now - self.last_wait_log_time >= 60:
+                    self.log_callback("Waiting for scheduled time...")
+                    self.last_wait_log_time = now
+                time.sleep(1)
+                continue
+                
             if loops > 0 and current_loop >= loops:
                 self.log_callback("Completed all loops.")
                 self.is_running = False
@@ -259,16 +291,19 @@ class AutoClickerApp(ctk.CTk):
             get_loops=self.get_loops,
             get_stop_region=lambda: self.stop_region_info,
             get_tolerance=self.get_tolerance,
-            get_check_delay=self.get_check_delay
+            get_check_delay=self.get_check_delay,
+            get_schedule_rules=self.get_schedule_rules,
+            is_schedule_enabled=self.is_schedule_enabled
         )
 
         # UI Layout Setup
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=2)  # Coordinates frame
         self.grid_rowconfigure(1, weight=1)  # Settings frame
-        self.grid_rowconfigure(2, weight=1)  # Watcher frame
-        self.grid_rowconfigure(3, weight=0)  # Start/Stop Button (fixed size)
-        self.grid_rowconfigure(4, weight=2)  # Console Textbox frame
+        self.grid_rowconfigure(2, weight=1)  # Schedule frame
+        self.grid_rowconfigure(3, weight=1)  # Watcher frame
+        self.grid_rowconfigure(4, weight=0)  # Start/Stop Button (fixed size)
+        self.grid_rowconfigure(5, weight=2)  # Console Textbox frame
         
         # --- COORDINATES SECTION ---
         self.coord_frame = ctk.CTkFrame(self)
@@ -312,9 +347,23 @@ class AutoClickerApp(ctk.CTk):
         self.check_delay_entry.insert(0, "0.5")
         self.check_delay_entry.grid(row=3, column=1, padx=10, pady=5, sticky="w")
 
+        # --- SCHEDULE SECTION ---
+        self.schedule_frame = ctk.CTkFrame(self)
+        self.schedule_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+        
+        ctk.CTkLabel(self.schedule_frame, text="Advanced Odd/Even Hour Scheduler", font=("Arial", 16, "bold")).pack(pady=5)
+        
+        self.use_schedule_var = ctk.BooleanVar(value=False)
+        self.schedule_cb = ctk.CTkCheckBox(self.schedule_frame, text="Enable Schedule", variable=self.use_schedule_var)
+        self.schedule_cb.pack(pady=5)
+        
+        ctk.CTkLabel(self.schedule_frame, text="Schedule Rules (e.g. Odd: 06 -> 15)").pack(pady=2)
+        self.schedule_text = ctk.CTkTextbox(self.schedule_frame, height=60)
+        self.schedule_text.pack(fill="x", padx=10, pady=5)
+
         # --- WATCHER SECTION ---
         self.watcher_frame = ctk.CTkFrame(self)
-        self.watcher_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+        self.watcher_frame.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
         
         ctk.CTkLabel(self.watcher_frame, text="Real-Time Image Stop Condition", font=("Arial", 16, "bold")).pack(pady=5)
         
@@ -337,14 +386,14 @@ class AutoClickerApp(ctk.CTk):
 
         # --- CONTROLS SECTION ---
         self.controls_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.controls_frame.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
+        self.controls_frame.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
         
         self.start_stop_btn = ctk.CTkButton(self.controls_frame, text="START (F8)", font=("Arial", 18, "bold"), fg_color="green", hover_color="darkgreen", command=self.toggle_start_stop)
         self.start_stop_btn.pack(fill="x", pady=10, ipady=10)
 
         # --- CONSOLE SECTION ---
         self.console = ctk.CTkTextbox(self, height=150)
-        self.console.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
+        self.console.grid(row=5, column=0, padx=10, pady=10, sticky="nsew")
         self.console.insert("0.0", "System initialized. Waiting for input...\n")
         self.console.configure(state="disabled")
 
@@ -440,6 +489,33 @@ class AutoClickerApp(ctk.CTk):
             return max(0.0, val)
         except ValueError:
             return 0.5
+
+    def is_schedule_enabled(self):
+        return self.use_schedule_var.get()
+
+    def get_schedule_rules(self):
+        rules = []
+        text = self.schedule_text.get("0.0", "end").strip()
+        if not text:
+            return rules
+            
+        lines = text.split("\n")
+        for line in lines:
+            try:
+                line = line.strip()
+                if not line:
+                    continue
+                type_part, time_part = line.split(":")
+                type_str = type_part.strip()
+                start_str, end_str = time_part.split("->")
+                rules.append({
+                    'type': type_str,
+                    'start': int(start_str.strip()),
+                    'end': int(end_str.strip())
+                })
+            except Exception:
+                pass
+        return rules
 
     def toggle_start_stop(self):
         self.after(0, self._toggle_start_stop_safe)
