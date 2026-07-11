@@ -101,8 +101,20 @@ class BotLogic:
                     break
                     
                 self.log_callback(f"Clicking Point {i+1}: ({x}, {y})")
+                # 1. Move the mouse to the target
                 self.mouse_controller.position = (x, y)
-                self.mouse_controller.click(mouse.Button.left, 1)
+                
+                # 2. Wait 50ms to let the game engine register the new cursor position (Hover state)
+                time.sleep(0.05)
+                
+                # 3. Hardware-level Mouse Down (0x0002)
+                ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+                
+                # 4. Hold the click for 50ms to simulate a real human finger press
+                time.sleep(0.05)
+                
+                # 5. Hardware-level Mouse Up (0x0004)
+                ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
                 
                 # Use wait for timeout so we can exit instantly if stop_event is set
                 if self.stop_event.wait(delay):
