@@ -3,3 +3,4 @@ pynput
 mss
 opencv-python
 numpy
+keyboard

@@ -1,4 +1,18 @@
+import os
+import sys
 import ctypes
+
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+if not is_admin():
+    # Relaunch the process with admin privileges
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+    sys.exit()
+
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
@@ -12,7 +26,8 @@ import time
 import cv2
 import numpy as np
 import mss
-from pynput import keyboard, mouse
+from pynput import mouse
+import keyboard as game_keyboard
 import customtkinter as ctk
 import tkinter as tk
 
@@ -329,8 +344,8 @@ class AutoClickerApp(ctk.CTk):
         self.console.configure(state="disabled")
 
         # Global Hotkey Listener
-        self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
-        self.keyboard_listener.start()
+        game_keyboard.add_hotkey('f2', self.trigger_f2_hotkey)
+        game_keyboard.add_hotkey('f8', self.toggle_start_stop)
         
         self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
         self.mouse_listener.start()
@@ -447,20 +462,13 @@ class AutoClickerApp(ctk.CTk):
         self.console.see("end")
         self.console.configure(state="disabled")
 
-    def on_key_press(self, key):
-        try:
-            if key == keyboard.Key.f2:
-                if self.recording_mode:
-                    self.recording_mode = False
-                    self.record_current_position()
-            elif key == keyboard.Key.f8:
-                self.toggle_start_stop()
-        except AttributeError:
-            pass
+    def trigger_f2_hotkey(self):
+        if self.recording_mode:
+            self.recording_mode = False
+            self.record_current_position()
 
     def on_closing(self):
         self.bot.stop("Application closing")
-        self.keyboard_listener.stop()
         self.mouse_listener.stop()
         self.destroy()
 
