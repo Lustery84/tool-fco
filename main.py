@@ -36,13 +36,14 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class BotLogic:
-    def __init__(self, log_callback, get_coordinates, get_delay, get_loops, get_stop_region, get_tolerance):
+    def __init__(self, log_callback, get_coordinates, get_delay, get_loops, get_stop_region, get_tolerance, get_check_delay):
         self.log_callback = log_callback
         self.get_coordinates = get_coordinates
         self.get_delay = get_delay
         self.get_loops = get_loops
         self.get_stop_region = get_stop_region
         self.get_tolerance = get_tolerance
+        self.get_check_delay = get_check_delay
         
         self.stop_event = threading.Event()
         self.clicker_thread = None
@@ -115,7 +116,7 @@ class BotLogic:
                     
             current_loop += 1
             
-            time.sleep(0.5)
+            time.sleep(self.get_check_delay())
             if not self.stop_event.is_set() and self.get_stop_region() and self._check_image_condition():
                 self.stop("Image Stop Condition Triggered at loop end")
                 break
@@ -250,7 +251,8 @@ class AutoClickerApp(ctk.CTk):
             get_delay=self.get_delay,
             get_loops=self.get_loops,
             get_stop_region=lambda: self.stop_region_info,
-            get_tolerance=self.get_tolerance
+            get_tolerance=self.get_tolerance,
+            get_check_delay=self.get_check_delay
         )
 
         # UI Layout Setup
@@ -297,6 +299,11 @@ class AutoClickerApp(ctk.CTk):
         self.loops_entry = ctk.CTkEntry(self.settings_frame, width=100)
         self.loops_entry.insert(0, "0")
         self.loops_entry.grid(row=2, column=1, padx=10, pady=5, sticky="w")
+        
+        ctk.CTkLabel(self.settings_frame, text="Check Delay (s):").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.check_delay_entry = ctk.CTkEntry(self.settings_frame, width=100)
+        self.check_delay_entry.insert(0, "0.5")
+        self.check_delay_entry.grid(row=3, column=1, padx=10, pady=5, sticky="w")
 
         # --- WATCHER SECTION ---
         self.watcher_frame = ctk.CTkFrame(self)
@@ -419,6 +426,13 @@ class AutoClickerApp(ctk.CTk):
 
     def get_tolerance(self):
         return self.tolerance_var.get()
+
+    def get_check_delay(self):
+        try:
+            val = float(self.check_delay_entry.get())
+            return max(0.0, val)
+        except ValueError:
+            return 0.5
 
     def toggle_start_stop(self):
         self.after(0, self._toggle_start_stop_safe)
