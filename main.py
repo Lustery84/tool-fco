@@ -297,11 +297,13 @@ class AutoClickerApp(ctk.CTk):
         # UI Layout Setup
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=2)  # Coordinates frame
-        self.grid_rowconfigure(1, weight=1)  # Settings frame
-        self.grid_rowconfigure(2, weight=1)  # Schedule frame
-        self.grid_rowconfigure(3, weight=1)  # Watcher frame
-        self.grid_rowconfigure(4, weight=0)  # Start/Stop Button (fixed size)
-        self.grid_rowconfigure(5, weight=2)  # Console Textbox frame
+        self.grid_rowconfigure(1, weight=3)  # Main Config Frame
+        self.grid_rowconfigure(2, weight=0)  # Start/Stop Button (fixed size)
+        self.grid_rowconfigure(3, weight=2)  # Console Textbox frame
+        
+        self.main_config_frame = ctk.CTkScrollableFrame(self)
+        self.main_config_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        self.main_config_frame.grid_columnconfigure(0, weight=1)
         
         # --- COORDINATES SECTION ---
         self.coord_frame = ctk.CTkFrame(self)
@@ -324,8 +326,8 @@ class AutoClickerApp(ctk.CTk):
         self.listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         # --- SETTINGS SECTION ---
-        self.settings_frame = ctk.CTkFrame(self)
-        self.settings_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        self.settings_frame = ctk.CTkFrame(self.main_config_frame)
+        self.settings_frame.pack(fill="x", pady=5)
         self.settings_frame.grid_columnconfigure(1, weight=1)
         
         ctk.CTkLabel(self.settings_frame, text="Settings", font=("Arial", 16, "bold")).grid(row=0, column=0, columnspan=2, pady=5)
@@ -346,8 +348,8 @@ class AutoClickerApp(ctk.CTk):
         self.check_delay_entry.grid(row=3, column=1, padx=10, pady=5, sticky="w")
 
         # --- SCHEDULE SECTION ---
-        self.schedule_frame = ctk.CTkFrame(self)
-        self.schedule_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+        self.schedule_frame = ctk.CTkFrame(self.main_config_frame)
+        self.schedule_frame.pack(fill="x", pady=5)
         
         ctk.CTkLabel(self.schedule_frame, text="Advanced Odd/Even Hour Scheduler", font=("Arial", 16, "bold")).pack(pady=5)
         
@@ -357,29 +359,29 @@ class AutoClickerApp(ctk.CTk):
         
         # Input Row
         self.sched_input_frame = ctk.CTkFrame(self.schedule_frame, fg_color="transparent")
-        self.sched_input_frame.pack(fill="x", padx=10, pady=5)
+        self.sched_input_frame.pack(pady=10, anchor="center")
         
         self.sched_type_menu = ctk.CTkOptionMenu(self.sched_input_frame, values=["Odd", "Even"], width=70)
-        self.sched_type_menu.pack(side="left", padx=5)
+        self.sched_type_menu.pack(side="left", padx=5, pady=5)
         
         self.sched_start_entry = ctk.CTkEntry(self.sched_input_frame, width=50, placeholder_text="00")
-        self.sched_start_entry.pack(side="left", padx=5)
+        self.sched_start_entry.pack(side="left", padx=5, pady=5)
         
-        ctk.CTkLabel(self.sched_input_frame, text="->").pack(side="left")
+        ctk.CTkLabel(self.sched_input_frame, text="->").pack(side="left", padx=5, pady=5)
         
         self.sched_end_entry = ctk.CTkEntry(self.sched_input_frame, width=50, placeholder_text="59")
-        self.sched_end_entry.pack(side="left", padx=5)
+        self.sched_end_entry.pack(side="left", padx=5, pady=5)
         
         self.add_sched_btn = ctk.CTkButton(self.sched_input_frame, text="+", width=30, command=self.add_schedule_rule)
-        self.add_sched_btn.pack(side="left", padx=5)
+        self.add_sched_btn.pack(side="left", padx=5, pady=5)
         
         # Scrollable rules display
-        self.schedule_listbox_frame = ctk.CTkScrollableFrame(self.schedule_frame, height=100)
-        self.schedule_listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.schedule_listbox_frame = ctk.CTkScrollableFrame(self.schedule_frame, height=100, width=400)
+        self.schedule_listbox_frame.pack(pady=10, anchor="center")
 
         # --- WATCHER SECTION ---
-        self.watcher_frame = ctk.CTkFrame(self)
-        self.watcher_frame.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
+        self.watcher_frame = ctk.CTkFrame(self.main_config_frame)
+        self.watcher_frame.pack(fill="x", pady=5)
         
         ctk.CTkLabel(self.watcher_frame, text="Real-Time Image Stop Condition", font=("Arial", 16, "bold")).pack(pady=5)
         
@@ -402,14 +404,14 @@ class AutoClickerApp(ctk.CTk):
 
         # --- CONTROLS SECTION ---
         self.controls_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.controls_frame.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
+        self.controls_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
         
         self.start_stop_btn = ctk.CTkButton(self.controls_frame, text="START (F8)", font=("Arial", 18, "bold"), fg_color="green", hover_color="darkgreen", command=self.toggle_start_stop)
         self.start_stop_btn.pack(fill="x", pady=10, ipady=10)
 
         # --- CONSOLE SECTION ---
         self.console = ctk.CTkTextbox(self, height=150)
-        self.console.grid(row=5, column=0, padx=10, pady=10, sticky="nsew")
+        self.console.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
         self.console.insert("0.0", "System initialized. Waiting for input...\n")
         self.console.configure(state="disabled")
 
@@ -542,14 +544,14 @@ class AutoClickerApp(ctk.CTk):
             widget.destroy()
             
         for i, rule in enumerate(self.schedule_rules_list):
-            frame = ctk.CTkFrame(self.schedule_listbox_frame, fg_color="transparent")
-            frame.pack(fill="x", pady=2)
+            frame = ctk.CTkFrame(self.schedule_listbox_frame, fg_color="#333333", corner_radius=5)
+            frame.pack(fill="x", pady=5, padx=10)
             
-            lbl = ctk.CTkLabel(frame, text=f"{rule['type']}: {rule['start']:02d} -> {rule['end']:02d}")
-            lbl.pack(side="left", padx=5)
+            lbl = ctk.CTkLabel(frame, text=f"{rule['type']}: {rule['start']:02d} -> {rule['end']:02d}", font=("Arial", 14))
+            lbl.pack(side="left", padx=10, pady=5)
             
             del_btn = ctk.CTkButton(frame, text="Delete", width=60, fg_color="darkred", hover_color="red", command=lambda idx=i: self.delete_schedule_rule(idx))
-            del_btn.pack(side="right", padx=5)
+            del_btn.pack(side="right", padx=10, pady=5)
 
     def toggle_start_stop(self):
         self.after(0, self._toggle_start_stop_safe)
