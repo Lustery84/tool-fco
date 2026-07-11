@@ -64,14 +64,7 @@ class BotLogic:
         
         self.log_callback("Starting Bot...")
         
-        # Start Watcher if region selected
-        stop_region = self.get_stop_region()
-        if stop_region and stop_region.get('bbox'):
-            self.watcher_thread = threading.Thread(target=self._watcher_loop, daemon=True)
-            self.watcher_thread.start()
-        else:
-            self.log_callback("Warning: No stop region selected. Watcher disabled.")
-            
+
         # Start Clicker
         self.clicker_thread = threading.Thread(target=self._clicker_loop, daemon=True)
         self.clicker_thread.start()
@@ -122,57 +115,38 @@ class BotLogic:
                     
             current_loop += 1
             
+            time.sleep(0.5)
+            if not self.stop_event.is_set() and self.get_stop_region() and self._check_image_condition():
+                self.stop("Image Stop Condition Triggered at loop end")
+                break
         self.is_running = False
 
-    def _watcher_loop(self):
+    def _check_image_condition(self):
         region_info = self.get_stop_region()
         if not region_info or 'bbox' not in region_info:
-            return
+            return False
             
-        bbox = region_info['bbox'] # {'left': x, 'top': y, 'width': w, 'height': h}
-        baseline = region_info['baseline'] # grayscale numpy array
+        bbox = region_info['bbox']
+        baseline = region_info['baseline']
         
-        # Initial startup delay to stabilize the cursor/GUI animation (500ms)
-        self.stop_event.wait(0.5)
-        
-        mismatch_count = 0
-        
-        with mss.MSS() as sct:
-            while not self.stop_event.is_set():
-                try:
-                    # Grab screen
-                    sct_img = sct.grab(bbox)
-                    
-                    # Convert to numpy array and grayscale
-                    current_img = np.array(sct_img)
-                    current_gray = cv2.cvtColor(current_img, cv2.COLOR_BGRA2GRAY)
-                    
-                    # Compare using absolute difference
-                    diff = cv2.absdiff(baseline, current_gray)
-                    
-                    # Calculate percentage difference
-                    diff_mean = np.mean(diff)
-                    diff_percentage = (diff_mean / 255.0) * 100.0
-                    
-                    tolerance = self.get_tolerance()
-                    
-                    if diff_percentage > tolerance:
-                        mismatch_count += 1
-                        if mismatch_count >= 3:
-                            self.log_callback(f"Image changed! Diff: {diff_percentage:.2f}% > Tol: {tolerance:.2f}%")
-                            self.stop("Image Stop Condition Triggered")
-                            break
-                    else:
-                        mismatch_count = 0
-                        
-                except Exception as e:
-                    self.log_callback(f"Watcher Error: {e}")
-                    self.stop("Watcher Thread Error")
-                    break
-                    
-                # 20 FPS roughly -> 50ms wait
-                if self.stop_event.wait(0.05):
-                    break
+        try:
+            with mss.MSS() as sct:
+                sct_img = sct.grab(bbox)
+                current_img = np.array(sct_img)
+                current_gray = cv2.cvtColor(current_img, cv2.COLOR_BGRA2GRAY)
+                
+                diff = cv2.absdiff(baseline, current_gray)
+                diff_mean = np.mean(diff)
+                diff_percentage = (diff_mean / 255.0) * 100.0
+                
+                tolerance = self.get_tolerance()
+                if diff_percentage > tolerance:
+                    self.log_callback(f"Image changed! Diff: {diff_percentage:.2f}% > Tol: {tolerance:.2f}%")
+                    return True
+                return False
+        except Exception as e:
+            self.log_callback(f"Image Check Error: {e}")
+            return True
 
 class OverlayWindow(tk.Toplevel):
     def __init__(self, master, on_complete):
