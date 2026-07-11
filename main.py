@@ -104,7 +104,12 @@ class BotLogic:
         bbox = region_info['bbox'] # {'left': x, 'top': y, 'width': w, 'height': h}
         baseline = region_info['baseline'] # grayscale numpy array
         
-        with mss.mss() as sct:
+        # Initial startup delay to stabilize the cursor/GUI animation (500ms)
+        self.stop_event.wait(0.5)
+        
+        mismatch_count = 0
+        
+        with mss.MSS() as sct:
             while not self.stop_event.is_set():
                 try:
                     # Grab screen
@@ -124,9 +129,14 @@ class BotLogic:
                     tolerance = self.get_tolerance()
                     
                     if diff_percentage > tolerance:
-                        self.log_callback(f"Image changed! Diff: {diff_percentage:.2f}% > Tol: {tolerance:.2f}%")
-                        self.stop("Image Stop Condition Triggered")
-                        break
+                        mismatch_count += 1
+                        if mismatch_count >= 3:
+                            self.log_callback(f"Image changed! Diff: {diff_percentage:.2f}% > Tol: {tolerance:.2f}%")
+                            self.stop("Image Stop Condition Triggered")
+                            break
+                    else:
+                        mismatch_count = 0
+                        
                 except Exception as e:
                     self.log_callback(f"Watcher Error: {e}")
                     self.stop("Watcher Thread Error")
