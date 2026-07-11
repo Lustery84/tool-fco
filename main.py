@@ -231,7 +231,7 @@ class AutoClickerApp(ctk.CTk):
 
         self.title("Advanced Auto Clicker")
         self.geometry("650x750")
-        self.resizable(False, False)
+        self.resizable(True, True)
 
         # State
         self.coordinates = []
@@ -248,6 +248,11 @@ class AutoClickerApp(ctk.CTk):
 
         # UI Layout Setup
         self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=2)  # Coordinates frame
+        self.grid_rowconfigure(1, weight=1)  # Settings frame
+        self.grid_rowconfigure(2, weight=1)  # Watcher frame
+        self.grid_rowconfigure(3, weight=0)  # Start/Stop Button (fixed size)
+        self.grid_rowconfigure(4, weight=2)  # Console Textbox frame
         
         # --- COORDINATES SECTION ---
         self.coord_frame = ctk.CTkFrame(self)
