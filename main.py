@@ -2,20 +2,19 @@ import ctypes
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
-    pass
-
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 import threading
 import time
 import cv2
 import numpy as np
 import mss
-import pyautogui
 from pynput import keyboard, mouse
 import customtkinter as ctk
 import tkinter as tk
-
-pyautogui.PAUSE = 0  # Maximum speed for clicks
 
 # Set up customtkinter appearance
 ctk.set_appearance_mode("Dark")
@@ -342,7 +341,8 @@ class AutoClickerApp(ctk.CTk):
 
     def record_current_position(self, x=None, y=None):
         if x is None or y is None:
-            x, y = pyautogui.position()
+            ctrl = mouse.Controller()
+            x, y = ctrl.position
         # Thread-safe GUI update
         self.after(0, self._record_current_position_safe, x, y)
         
