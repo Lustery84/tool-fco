@@ -197,21 +197,28 @@ class OverlayWindow(tk.Toplevel):
         
         if width > 0 and height > 0:
             bbox = {'left': left, 'top': top, 'width': width, 'height': height}
-            try:
-                # Capture baseline image immediately
-                with mss.MSS() as sct:
-                    sct_img = sct.grab(bbox)
-                    baseline_bgra = np.array(sct_img)
-                    baseline = cv2.cvtColor(baseline_bgra, cv2.COLOR_BGRA2GRAY)
-                    
-                self.on_complete({'bbox': bbox, 'baseline': baseline})
-            except Exception as e:
-                print(f"Error capturing baseline: {e}")
-                self.on_complete(None)
+            
+            # Hide the overlay immediately so the screen is clear
+            self.withdraw()
+            
+            def capture_function():
+                try:
+                    with mss.MSS() as sct:
+                        sct_img = sct.grab(bbox)
+                        baseline_bgra = np.array(sct_img)
+                        baseline = cv2.cvtColor(baseline_bgra, cv2.COLOR_BGRA2GRAY)
+                        
+                    self.on_complete({'bbox': bbox, 'baseline': baseline})
+                except Exception as e:
+                    print(f"Error capturing baseline: {e}")
+                    self.on_complete(None)
+                self.destroy()
+                
+            # Wait 500ms to allow cursor to move out of the way before capturing
+            self.after(500, capture_function)
         else:
             self.on_complete(None)
-            
-        self.destroy()
+            self.destroy()
         
     def _cancel(self):
         self.on_complete(None)
