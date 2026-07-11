@@ -142,12 +142,19 @@ class BotLogic:
                 _, current_thresh = cv2.threshold(current_gray, thresh_val, 255, cv2.THRESH_BINARY)
                 
                 diff = cv2.absdiff(baseline_thresh, current_thresh)
-                diff_mean = np.mean(diff)
-                diff_percentage = (diff_mean / 255.0) * 100.0
                 
+                chunks = np.array_split(diff, 5, axis=1)
+                max_chunk_diff = 0.0
+                
+                for chunk in chunks:
+                    chunk_diff = (np.mean(chunk) / 255.0) * 100.0
+                    if chunk_diff > max_chunk_diff:
+                        max_chunk_diff = chunk_diff
+                        
                 tolerance = self.get_tolerance()
-                if diff_percentage > tolerance:
-                    self.log_callback(f"Image changed! Diff: {diff_percentage:.2f}% > Tol: {tolerance:.2f}%")
+                self.log_callback(f"Image Check: Max Chunk Diff = {max_chunk_diff:.2f}% | Tol = {tolerance:.2f}%")
+                
+                if max_chunk_diff > tolerance:
                     return True
                 return False
         except Exception as e:
