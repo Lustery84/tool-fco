@@ -7,3 +7,4 @@ keyboard
 fastapi
 uvicorn
 pydantic
+pywebview

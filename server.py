@@ -179,6 +179,13 @@ def get_status():
         "current_step": engine.current_step
     }
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+frontend_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+
 if __name__ == "__main__":
     import uvicorn
     # Run the server on port 8000

@@ -10,7 +10,10 @@ def is_admin():
 
 if not is_admin():
     # Relaunch the process with admin privileges
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+    script_path = os.path.abspath(sys.argv[0])
+    directory = os.path.dirname(script_path)
+    params = ' '.join([f'"{script_path}"'] + sys.argv[1:])
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, directory, 1)
     sys.exit()
 
 try:
