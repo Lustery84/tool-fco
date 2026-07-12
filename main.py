@@ -317,8 +317,6 @@ class AutoClickerApp(ctk.CTk):
         self.coordinates = []
         self.recording_mode = False
         self.stop_region_info = None
-        self.schedule_rules_list = []
-        self.is_schedule_active_flag = False
         self.bot = BotLogic(
             log_callback=self.log_message,
             get_coordinates=lambda: self.coordinates,
@@ -391,30 +389,13 @@ class AutoClickerApp(ctk.CTk):
         ctk.CTkLabel(self.schedule_frame, text="Advanced Odd/Even Hour Scheduler", font=("Arial", 16, "bold")).pack(pady=5)
         
         self.use_schedule_var = ctk.BooleanVar(value=False)
-        self.schedule_cb = ctk.CTkCheckBox(self.schedule_frame, text="Enable Schedule", variable=self.use_schedule_var, command=self.update_schedule_flag)
+        self.schedule_cb = ctk.CTkCheckBox(self.schedule_frame, text="Enable Schedule", variable=self.use_schedule_var)
         self.schedule_cb.pack(pady=5)
         
-        # Input Row
-        self.sched_input_frame = ctk.CTkFrame(self.schedule_frame, fg_color="transparent")
-        self.sched_input_frame.pack(pady=10, anchor="center")
+        ctk.CTkLabel(self.schedule_frame, text="Schedule Rules:").pack(pady=5)
         
-        self.sched_type_menu = ctk.CTkOptionMenu(self.sched_input_frame, values=["Odd", "Even"], width=70)
-        self.sched_type_menu.pack(side="left", padx=5, pady=5)
-        
-        self.sched_start_entry = ctk.CTkEntry(self.sched_input_frame, width=50, placeholder_text="00")
-        self.sched_start_entry.pack(side="left", padx=5, pady=5)
-        
-        ctk.CTkLabel(self.sched_input_frame, text="->").pack(side="left", padx=5, pady=5)
-        
-        self.sched_end_entry = ctk.CTkEntry(self.sched_input_frame, width=50, placeholder_text="59")
-        self.sched_end_entry.pack(side="left", padx=5, pady=5)
-        
-        self.add_sched_btn = ctk.CTkButton(self.sched_input_frame, text="+", width=30, command=self.add_schedule_rule)
-        self.add_sched_btn.pack(side="left", padx=5, pady=5)
-        
-        # Scrollable rules display
-        self.schedule_listbox_frame = ctk.CTkScrollableFrame(self.schedule_frame, height=100, width=400)
-        self.schedule_listbox_frame.pack(pady=10, anchor="center")
+        self.schedule_rules_text = ctk.CTkTextbox(self.schedule_frame, height=60, width=400)
+        self.schedule_rules_text.pack(pady=5)
 
         # --- WATCHER SECTION ---
         self.watcher_frame = ctk.CTkFrame(self.main_config_frame)
@@ -546,52 +527,31 @@ class AutoClickerApp(ctk.CTk):
             return 0.5
 
     def is_schedule_enabled(self):
-        return self.is_schedule_active_flag
-
-    def update_schedule_flag(self):
-        self.is_schedule_active_flag = self.use_schedule_var.get()
+        return self.use_schedule_var.get()
 
     def get_schedule_rules(self):
-        return self.schedule_rules_list
-
-    def add_schedule_rule(self):
-        try:
-            start_val = int(self.sched_start_entry.get())
-            end_val = int(self.sched_end_entry.get())
-            type_val = self.sched_type_menu.get()
-            
-            if 0 <= start_val <= 59 and 0 <= end_val <= 59:
-                self.schedule_rules_list.append({
-                    'type': type_val,
-                    'start': start_val,
-                    'end': end_val
-                })
-                self.sched_start_entry.delete(0, 'end')
-                self.sched_end_entry.delete(0, 'end')
-                self.refresh_schedule_ui()
-            else:
-                self.log_message("Error: Minutes must be between 0 and 59.")
-        except ValueError:
-            self.log_message("Error: Invalid minute values. Must be integers.")
-
-    def delete_schedule_rule(self, index):
-        if 0 <= index < len(self.schedule_rules_list):
-            self.schedule_rules_list.pop(index)
-            self.refresh_schedule_ui()
-
-    def refresh_schedule_ui(self):
-        for widget in self.schedule_listbox_frame.winfo_children():
-            widget.destroy()
-            
-        for i, rule in enumerate(self.schedule_rules_list):
-            frame = ctk.CTkFrame(self.schedule_listbox_frame, fg_color="#333333", corner_radius=5)
-            frame.pack(fill="x", pady=5, padx=10)
-            
-            lbl = ctk.CTkLabel(frame, text=f"{rule['type']}: {rule['start']:02d} -> {rule['end']:02d}", font=("Arial", 14))
-            lbl.pack(side="left", padx=10, pady=5)
-            
-            del_btn = ctk.CTkButton(frame, text="Delete", width=60, fg_color="darkred", hover_color="red", command=lambda idx=i: self.delete_schedule_rule(idx))
-            del_btn.pack(side="right", padx=10, pady=5)
+        rules_text = self.schedule_rules_text.get("1.0", "end-1c")
+        rules = []
+        for line in rules_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                type_part, time_part = line.split(":", 1)
+                type_val = type_part.strip().capitalize()
+                start_str, end_str = time_part.split("->", 1)
+                start_val = int(start_str.strip())
+                end_val = int(end_str.strip())
+                
+                if type_val in ["Odd", "Even"] and 0 <= start_val <= 59 and 0 <= end_val <= 59:
+                    rules.append({
+                        'type': type_val,
+                        'start': start_val,
+                        'end': end_val
+                    })
+            except Exception:
+                pass
+        return rules
 
     def toggle_start_stop(self):
         self.after(0, self._toggle_start_stop_safe)

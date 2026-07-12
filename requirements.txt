@@ -4,3 +4,6 @@ mss
 opencv-python
 numpy
 keyboard
+fastapi
+uvicorn
+pydantic

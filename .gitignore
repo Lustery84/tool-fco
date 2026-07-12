@@ -5,3 +5,5 @@ __pycache__/
 # IDEs
 .vscode/
 .idea/
+node_modules/
+frontend/node_modules/
