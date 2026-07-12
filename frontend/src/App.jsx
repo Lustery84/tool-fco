@@ -4,10 +4,11 @@ const API_BASE = 'http://localhost:8000';
 
 function App() {
   const [nodes, setNodes] = useState([
-    { id: 'step_1', type: 'click', x: 100, y: 200, delay: 1.0, next: 'end' }
+    { id: 'step_1', type: 'click', x: 100, y: 200, delay: 1.0, next: 'end', loopId: 'Loop_1' }
   ]);
   const [status, setStatus] = useState({ is_running: false, current_step: null });
   const [logs, setLogs] = useState(["System initialized..."]);
+  const [isWaiting, setIsWaiting] = useState(false);
   
   const terminalRef = useRef(null);
 
@@ -15,14 +16,12 @@ function App() {
     setLogs(prev => [...prev.slice(-49), `${new Date().toLocaleTimeString()} - ${msg}`]);
   };
 
-  // Auto-scroll terminal
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [logs]);
 
-  // Polling backend status
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -31,9 +30,7 @@ function App() {
           const data = await res.json();
           setStatus(data);
         }
-      } catch (err) {
-        // Silent fail if server is down
-      }
+      } catch (err) {}
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -65,7 +62,7 @@ function App() {
   const handleDeploy = async () => {
     const script = {};
     nodes.forEach(n => {
-      const { id, type, ...rest } = n;
+      const { id, type, loopId, ...rest } = n;
       script[id] = { type, ...rest };
     });
     
@@ -84,18 +81,18 @@ function App() {
 
   const addNode = (type) => {
     const id = `step_${nodes.length + 1}`;
-    let newNode = { id, type };
+    let newNode = { id, type, loopId: 'Loop_1' };
     if (type === 'click') {
       newNode = { ...newNode, x: 0, y: 0, delay: 1.0, next: 'end' };
     } else if (type === 'wait') {
-      // Treating 'wait' as a click node with 0,0 coords and a delay under the hood
       newNode = { ...newNode, type: 'click', x: 0, y: 0, delay: 5.0, next: 'end' };
     } else if (type === 'check_image') {
       newNode = { 
         ...newNode, 
         bbox: { left: 0, top: 0, width: 100, height: 100 }, 
-        baseline: [], // Mocking empty baseline array for now
+        baseline: [], 
         tolerance: 5.0, 
+        delay: 0.5,
         next_if_true: 'end', 
         next_if_false: 'end' 
       };
@@ -123,16 +120,65 @@ function App() {
     setNodes(updated);
   };
 
+  const captureCoord = async (index) => {
+    setIsWaiting(true);
+    addLog("Waiting for click on screen...");
+    try {
+      const res = await fetch(`${API_BASE}/capture_coord`);
+      if(res.ok) {
+        const data = await res.json();
+        updateNode(index, 'x', data.x);
+        updateNode(index, 'y', data.y);
+        addLog(`Captured coords: ${data.x}, ${data.y}`);
+      } else {
+        addLog("Capture cancelled.");
+      }
+    } catch (e) {
+      addLog(`ERR fetching coord: ${e.message}`);
+    }
+    setIsWaiting(false);
+  };
+
+  const captureRegion = async (index) => {
+    setIsWaiting(true);
+    addLog("Waiting for region snip...");
+    try {
+      const res = await fetch(`${API_BASE}/capture_region`);
+      if(res.ok) {
+        const data = await res.json();
+        const updated = [...nodes];
+        updated[index].bbox = data.bbox;
+        updated[index].baseline = data.baseline;
+        setNodes(updated);
+        addLog(`Captured region: ${data.bbox.width}x${data.bbox.height}`);
+      } else {
+        addLog("Capture cancelled.");
+      }
+    } catch (e) {
+      addLog(`ERR fetching region: ${e.message}`);
+    }
+    setIsWaiting(false);
+  };
+
+  const groupedNodes = nodes.reduce((acc, node, index) => {
+    const loopId = node.loopId || 'Loop_1';
+    if (!acc[loopId]) acc[loopId] = [];
+    acc[loopId].push({ node, index });
+    return acc;
+  }, {});
+
+  const nodeIds = ['end', ...nodes.map(n => n.id)];
+
   return (
      <div className="layout-grid">
        <div className="left-panel">
          <div className="pixel-box">
            <h2>Control Panel</h2>
            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-             <button onClick={handleStart}>[ START ]</button>
-             <button className="danger" onClick={handleStop}>[ STOP ]</button>
+             <button onClick={handleStart} disabled={isWaiting}>[ START ]</button>
+             <button className="danger" onClick={handleStop} disabled={isWaiting}>[ STOP ]</button>
            </div>
-           <p>STATUS: <span style={{ color: status.is_running ? '#39ff14' : '#ff0000' }}>
+           <p>STATUS: <span style={{ color: status.is_running ? '#00A800' : '#E40058' }}>
              {status.is_running ? 'RUNNING' : 'IDLE'}
            </span></p>
            <p>ACTIVE STEP: {status.current_step || 'NONE'}</p>
@@ -151,7 +197,7 @@ function App() {
          <div className="pixel-box">
            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
              <h2 style={{ margin: 0, border: 'none' }}>Sequence Builder</h2>
-             <button style={{ borderColor: '#fff' }} onClick={handleDeploy}>DEPLOY SCRIPT</button>
+             <button style={{ borderColor: '#000' }} onClick={handleDeploy}>DEPLOY SCRIPT</button>
            </div>
            
            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
@@ -161,38 +207,64 @@ function App() {
            </div>
 
            <div className="nodes-container">
-             {nodes.map((node, i) => (
-               <div key={i} className="node-card">
-                 <div className="node-header">
-                   <span>{node.id} [{node.type.toUpperCase()}]</span>
-                   <button className="danger" onClick={() => removeNode(i)}>X</button>
-                 </div>
+             {Object.keys(groupedNodes).map((loopId) => (
+               <div key={loopId} className="loop-group" style={{ border: '4px solid #C84C0C', padding: '10px', marginBottom: '20px', backgroundColor: '#FFFDE7', boxShadow: '4px 4px 0px #000' }}>
+                 <h3 style={{ marginTop: 0, color: '#000', textTransform: 'uppercase' }}>Group: {loopId}</h3>
                  
-                 <div className="node-properties">
-                   {/* Click Node & Wait Node (Mocked as click) */}
-                   {node.type === 'click' && (
-                     <>
-                       <div className="property-group"><label>X:</label> <input type="number" value={node.x} onChange={e => updateNode(i, 'x', parseInt(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>Y:</label> <input type="number" value={node.y} onChange={e => updateNode(i, 'y', parseInt(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>DELAY(s):</label> <input type="number" step="0.1" value={node.delay} onChange={e => updateNode(i, 'delay', parseFloat(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>NEXT_ID:</label> <input type="text" value={node.next} onChange={e => updateNode(i, 'next', e.target.value)} /></div>
-                     </>
-                   )}
-                   {/* Check Image Node */}
-                   {node.type === 'check_image' && (
-                     <>
-                       <div className="property-group"><label>TOLERANCE(%):</label> <input type="number" step="0.1" value={node.tolerance} onChange={e => updateNode(i, 'tolerance', parseFloat(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>IF_TRUE:</label> <input type="text" value={node.next_if_true} onChange={e => updateNode(i, 'next_if_true', e.target.value)} /></div>
-                       <div className="property-group"><label>IF_FALSE:</label> <input type="text" value={node.next_if_false} onChange={e => updateNode(i, 'next_if_false', e.target.value)} /></div>
-                       <div style={{ width: '100%', margin: '5px 0', borderTop: '1px dashed #39ff14' }}></div>
-                       <div className="property-group"><label>BBOX L:</label> <input type="number" value={node.bbox.left} onChange={e => updateNodeNested(i, 'bbox', 'left', parseInt(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>BBOX T:</label> <input type="number" value={node.bbox.top} onChange={e => updateNodeNested(i, 'bbox', 'top', parseInt(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>BBOX W:</label> <input type="number" value={node.bbox.width} onChange={e => updateNodeNested(i, 'bbox', 'width', parseInt(e.target.value) || 0)} /></div>
-                       <div className="property-group"><label>BBOX H:</label> <input type="number" value={node.bbox.height} onChange={e => updateNodeNested(i, 'bbox', 'height', parseInt(e.target.value) || 0)} /></div>
-                       <div className="property-group" style={{ width: '100%' }}><small>(Note: `baseline` array generation must be wired up programmatically to capture a reference image snippet)</small></div>
-                     </>
-                   )}
-                 </div>
+                 {groupedNodes[loopId].map(({ node, index: i }) => (
+                   <div key={i} className="node-card">
+                     <div className="node-header">
+                       <span>{node.id} [{node.type.toUpperCase()}]</span>
+                       <button className="danger" onClick={() => removeNode(i)}>X</button>
+                     </div>
+                     
+                     <div className="node-properties">
+                       <div className="property-group"><label>LOOP_ID:</label> <input type="text" value={node.loopId || 'Loop_1'} onChange={e => updateNode(i, 'loopId', e.target.value)} /></div>
+                       <div style={{ width: '100%', margin: '2px 0', borderTop: '2px dashed #888' }}></div>
+                       
+                       {node.type === 'click' && (
+                         <>
+                           <div className="property-group"><label>X:</label> <input type="number" value={node.x} onChange={e => updateNode(i, 'x', parseInt(e.target.value) || 0)} /></div>
+                           <div className="property-group"><label>Y:</label> <input type="number" value={node.y} onChange={e => updateNode(i, 'y', parseInt(e.target.value) || 0)} /></div>
+                           <button className="action-btn" onClick={() => captureCoord(i)} disabled={isWaiting}>[ 🎯 CLICK TO CAPTURE ]</button>
+                           <div className="property-group"><label>DELAY(s):</label> <input type="number" step="0.1" value={node.delay} onChange={e => updateNode(i, 'delay', parseFloat(e.target.value) || 0)} /></div>
+                           <div className="property-group">
+                             <label>NEXT_ID:</label>
+                             <select value={node.next} onChange={e => updateNode(i, 'next', e.target.value)}>
+                               {nodeIds.map(id => <option key={id} value={id}>{id}</option>)}
+                             </select>
+                           </div>
+                         </>
+                       )}
+                       
+                       {node.type === 'check_image' && (
+                         <>
+                           <div className="property-group"><label>TOLERANCE(%):</label> <input type="number" step="0.1" value={node.tolerance} onChange={e => updateNode(i, 'tolerance', parseFloat(e.target.value) || 0)} /></div>
+                           <div className="property-group"><label>DELAY(s):</label> <input type="number" step="0.1" value={node.delay} onChange={e => updateNode(i, 'delay', parseFloat(e.target.value) || 0)} /></div>
+                           <div className="property-group">
+                             <label>IF_TRUE:</label> 
+                             <select value={node.next_if_true} onChange={e => updateNode(i, 'next_if_true', e.target.value)}>
+                               {nodeIds.map(id => <option key={id} value={id}>{id}</option>)}
+                             </select>
+                           </div>
+                           <div className="property-group">
+                             <label>IF_FALSE:</label> 
+                             <select value={node.next_if_false} onChange={e => updateNode(i, 'next_if_false', e.target.value)}>
+                               {nodeIds.map(id => <option key={id} value={id}>{id}</option>)}
+                             </select>
+                           </div>
+                           <div style={{ width: '100%', margin: '5px 0', borderTop: '2px dashed #888' }}></div>
+                           <button className="action-btn" onClick={() => captureRegion(i)} disabled={isWaiting}>[ ✂️ SNIP REGION ]</button>
+                           {node.bbox && (
+                             <span style={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                               BBOX: L={node.bbox.left} T={node.bbox.top} W={node.bbox.width} H={node.bbox.height}
+                             </span>
+                           )}
+                         </>
+                       )}
+                     </div>
+                   </div>
+                 ))}
                </div>
              ))}
            </div>

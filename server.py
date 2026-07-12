@@ -4,10 +4,94 @@ import ctypes
 import cv2
 import numpy as np
 import mss
+import tkinter as tk
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
+
+def get_click_coord():
+    root = tk.Tk()
+    result = {}
+    with mss.MSS() as sct:
+        mon = sct.monitors[0]
+        
+    root.geometry(f"{mon['width']}x{mon['height']}+{mon['left']}+{mon['top']}")
+    root.overrideredirect(True)
+    root.attributes('-alpha', 0.1)
+    root.attributes('-topmost', True)
+    root.config(cursor="crosshair")
+    
+    def on_click(event):
+        result['x'] = event.x_root
+        result['y'] = event.y_root
+        root.quit()
+        
+    root.bind("<Button-1>", on_click)
+    root.bind("<Escape>", lambda e: root.quit())
+    root.mainloop()
+    root.destroy()
+    return result
+
+def get_snip_region():
+    root = tk.Tk()
+    result = {}
+    with mss.MSS() as sct:
+        mon = sct.monitors[0]
+        
+    root.geometry(f"{mon['width']}x{mon['height']}+{mon['left']}+{mon['top']}")
+    root.overrideredirect(True)
+    root.attributes('-alpha', 0.3)
+    root.attributes('-topmost', True)
+    root.config(cursor="crosshair")
+    
+    canvas = tk.Canvas(root, bg='black', highlightthickness=0)
+    canvas.pack(fill='both', expand=True)
+    
+    state = {'start_x': 0, 'start_y': 0, 'rect': None}
+    
+    def on_press(event):
+        state['start_x'] = event.x
+        state['start_y'] = event.y
+        state['rect'] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline='red', width=3, fill='gray')
+        
+    def on_drag(event):
+        if state['rect']:
+            canvas.coords(state['rect'], state['start_x'], state['start_y'], event.x, event.y)
+            
+    def on_release(event):
+        end_x = event.x_root
+        end_y = event.y_root
+        start_x_root = root.winfo_rootx() + state['start_x']
+        start_y_root = root.winfo_rooty() + state['start_y']
+        
+        left = min(start_x_root, end_x)
+        top = min(start_y_root, end_y)
+        width = abs(start_x_root - end_x)
+        height = abs(start_y_root - end_y)
+        
+        if width > 0 and height > 0:
+            result['bbox'] = {'left': int(left), 'top': int(top), 'width': int(width), 'height': int(height)}
+        root.quit()
+        
+    root.bind("<ButtonPress-1>", on_press)
+    root.bind("<B1-Motion>", on_drag)
+    root.bind("<ButtonRelease-1>", on_release)
+    root.bind("<Escape>", lambda e: root.quit())
+    
+    root.mainloop()
+    
+    root.withdraw()
+    if 'bbox' in result:
+        time.sleep(0.2)
+        with mss.MSS() as sct:
+            sct_img = sct.grab(result['bbox'])
+            baseline_bgra = np.array(sct_img)
+            baseline = cv2.cvtColor(baseline_bgra, cv2.COLOR_BGRA2GRAY)
+            result['baseline'] = baseline.tolist()
+            
+    root.destroy()
+    return result
 
 # --- Macro Engine (State Machine) ---
 
@@ -45,7 +129,6 @@ class MacroEngine:
 
     def _run_loop(self):
         while not self.stop_event.is_set() and self.current_step:
-            # Special 'end' keyword stops the machine
             if self.current_step == "end":
                 break
                 
@@ -61,18 +144,12 @@ class MacroEngine:
                 y = step_data.get("y", 0)
                 delay = step_data.get("delay", 1.0)
                 
-                # Move mouse
                 ctypes.windll.user32.SetCursorPos(x, y)
                 time.sleep(0.05)
-                
-                # Mouse Down (0x0002)
                 ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
                 time.sleep(0.05)
-                
-                # Mouse Up (0x0004)
                 ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
                 
-                # Wait for the delay specified in the step, break if stopped
                 if self.stop_event.wait(delay):
                     break
                     
@@ -82,16 +159,19 @@ class MacroEngine:
                 bbox = step_data.get("bbox")
                 baseline_data = step_data.get("baseline")
                 tolerance = step_data.get("tolerance", 5.0)
+                delay = step_data.get("delay", 0.5)
                 
                 if not bbox or not baseline_data:
                     print("Error: Missing bbox or baseline in check_image step.")
                     self.current_step = step_data.get("next_if_false")
                     continue
                     
+                if delay > 0:
+                    if self.stop_event.wait(delay):
+                        break
+                        
                 try:
-                    # Convert list back to numpy array
                     baseline = np.array(baseline_data, dtype=np.uint8)
-                    
                     with mss.MSS() as sct:
                         sct_img = sct.grab(bbox)
                         current_img = np.array(sct_img)
@@ -102,7 +182,8 @@ class MacroEngine:
                         _, current_thresh = cv2.threshold(current_gray, thresh_val, 255, cv2.THRESH_BINARY)
                         
                         diff = cv2.absdiff(baseline_thresh, current_thresh)
-                        chunks = np.array_split(diff, 5, axis=1)
+                        num_chunks = max(5, diff.shape[1] // 10)
+                        chunks = np.array_split(diff, num_chunks, axis=1)
                         max_chunk_diff = 0.0
                         
                         for chunk in chunks:
@@ -110,7 +191,6 @@ class MacroEngine:
                             if chunk_diff > max_chunk_diff:
                                 max_chunk_diff = chunk_diff
                         
-                        # Branching logic based on image match
                         if max_chunk_diff > tolerance:
                             self.current_step = step_data.get("next_if_true")
                         else:
@@ -120,7 +200,6 @@ class MacroEngine:
                     print(f"Image check error: {e}")
                     self.current_step = step_data.get("next_if_false")
                     
-                # Small delay to prevent high CPU usage on fast loops
                 if self.stop_event.wait(0.1):
                     break
             else:
@@ -137,7 +216,7 @@ app = FastAPI(title="Macro Engine Server")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # For dev only. Restrict this in production.
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -179,6 +258,21 @@ def get_status():
         "current_step": engine.current_step
     }
 
+@app.get("/capture_coord")
+def capture_coord():
+    res = get_click_coord()
+    if 'x' in res:
+        return {"x": res['x'], "y": res['y']}
+    raise HTTPException(status_code=400, detail="Cancelled")
+
+@app.get("/capture_region")
+def capture_region():
+    res = get_snip_region()
+    if 'bbox' in res and 'baseline' in res:
+        return {"bbox": res['bbox'], "baseline": res['baseline']}
+    raise HTTPException(status_code=400, detail="Cancelled")
+
+
 import os
 from fastapi.staticfiles import StaticFiles
 
@@ -188,5 +282,4 @@ if os.path.exists(frontend_dist):
 
 if __name__ == "__main__":
     import uvicorn
-    # Run the server on port 8000
     uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=False)

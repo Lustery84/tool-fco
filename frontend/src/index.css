@@ -1,11 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
 :root {
-  --bg-color: #000000;
-  --text-color: #39ff14;
-  --danger-color: #ff0000;
-  --border-color: #39ff14;
-  --dark-green: #0a2e0a;
+  --bg-color: #5C94FC; /* Retro Sky Blue */
+  --box-bg: #F8F8F8;
+  --text-color: #000000;
+  --border-color: #C84C0C; /* Brick Red */
+  --border-color-alt: #00A800; /* Pipe Green */
+  --btn-yellow: #F8D820; /* Coin Yellow */
+  --btn-red: #E40058; /* Mario Red */
+  --btn-green: #00A800; /* Pipe Green */
+  --shadow-color: #000000;
 }
 
 body {
@@ -13,104 +17,105 @@ body {
   background-color: var(--bg-color);
   color: var(--text-color);
   font-family: 'VT323', monospace;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
 }
 
-/* CRT scanline effect */
-body::after {
-  content: " ";
-  display: block;
-  position: fixed;
-  top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%,
-    rgba(0, 0, 0, 0.25) 50%
-  ), linear-gradient(
-    90deg,
-    rgba(255, 0, 0, 0.06),
-    rgba(0, 255, 0, 0.02),
-    rgba(0, 0, 255, 0.06)
-  );
-  z-index: 999;
-  background-size: 100% 2px, 3px 100%;
-  pointer-events: none;
-}
-
-/* Common box styling */
+/* Common box styling - Dialogue Box */
 .pixel-box {
-  border: 4px solid var(--border-color);
-  background-color: #000;
+  border: 6px solid var(--border-color);
+  background-color: var(--box-bg);
   padding: 16px;
   margin-bottom: 16px;
   position: relative;
-  box-shadow: 4px 4px 0px var(--dark-green);
+  box-shadow: 6px 6px 0px var(--shadow-color);
+}
+
+/* Alternating border color for some boxes */
+.right-panel .pixel-box {
+  border-color: var(--border-color-alt);
 }
 
 .pixel-box h2 {
   margin-top: 0;
   text-transform: uppercase;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 4px solid var(--border-color);
   padding-bottom: 8px;
+  color: #000;
+  text-shadow: 2px 2px 0px #ccc;
+}
+
+.right-panel .pixel-box h2 {
+  border-bottom-color: var(--border-color-alt);
 }
 
 /* Buttons */
 button {
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  border: 4px solid var(--border-color);
+  background-color: var(--btn-yellow);
+  color: #000;
+  border: 4px solid #000;
   padding: 8px 16px;
   font-family: 'VT323', monospace;
   font-size: 1.2rem;
+  font-weight: bold;
   cursor: pointer;
   text-transform: uppercase;
-  box-shadow: 4px 4px 0px var(--dark-green);
-  transition: all 0.1s;
+  box-shadow: 4px 4px 0px var(--shadow-color);
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 
 button:active {
-  box-shadow: 0px 0px 0px var(--dark-green);
+  box-shadow: 0px 0px 0px var(--shadow-color);
   transform: translate(4px, 4px);
 }
 
 button.danger {
-  color: var(--danger-color);
-  border-color: var(--danger-color);
-  box-shadow: 4px 4px 0px #4a0000;
+  background-color: var(--btn-red);
+  color: #FFF;
+  text-shadow: 2px 2px 0px #000;
 }
 
-button.danger:active {
-  box-shadow: 0px 0px 0px #4a0000;
+button.action-btn {
+  background-color: var(--btn-green);
+  color: #FFF;
+  text-shadow: 2px 2px 0px #000;
 }
 
-/* Inputs */
-input {
-  background-color: var(--dark-green);
-  color: var(--text-color);
-  border: 2px solid var(--border-color);
+/* Inputs & Selects */
+input, select {
+  background-color: #FFF;
+  color: #000;
+  border: 4px solid #000;
   font-family: 'VT323', monospace;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   padding: 4px 8px;
   outline: none;
   width: 80px;
+  box-shadow: 2px 2px 0px #ccc inset;
 }
 
-input[type="text"] {
+input[type="text"], select {
   width: 150px;
 }
 
-input:focus {
-  background-color: #000;
+input:focus, select:focus {
+  background-color: #FFFDE7;
+}
+
+select {
+  cursor: pointer;
 }
 
 /* Terminal */
 .terminal-container {
   height: 200px;
   overflow-y: auto;
-  background-color: #051405;
-  border: 2px solid var(--border-color);
+  background-color: #000;
+  color: #FFF;
+  border: 4px solid var(--border-color);
   padding: 10px;
   display: flex;
   flex-direction: column;
+  box-shadow: inset 4px 4px 0px rgba(0,0,0,0.5);
 }
 .terminal-line {
   margin: 2px 0;
@@ -118,20 +123,24 @@ input:focus {
 }
 .terminal-line::before {
   content: "> ";
+  color: var(--btn-yellow);
 }
 .cursor {
   animation: blink 1s step-end infinite;
+  color: var(--btn-yellow);
 }
 @keyframes blink { 50% { opacity: 0; } }
 
 /* Node Editor */
 .node-card {
-  border: 2px dashed var(--border-color);
-  padding: 10px;
+  border: 4px solid #000;
+  background-color: #E0E0E0;
+  padding: 12px;
   margin-bottom: 15px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: 4px 4px 0px #888;
 }
 
 .node-header {
@@ -139,7 +148,10 @@ input:focus {
   justify-content: space-between;
   align-items: center;
   font-weight: bold;
-  font-size: 1.3rem;
+  font-size: 1.4rem;
+  color: #000;
+  border-bottom: 2px dashed #888;
+  padding-bottom: 8px;
 }
 
 .node-properties {
@@ -153,6 +165,7 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 6px;
+  font-weight: bold;
 }
 
 .layout-grid {
