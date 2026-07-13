@@ -5,10 +5,21 @@ import cv2
 import numpy as np
 import mss
 import tkinter as tk
+import os
+import json
+import keyboard
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
+
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 def get_click_coord():
     root = tk.Tk()
@@ -86,9 +97,10 @@ def get_snip_region():
         time.sleep(0.2)
         with mss.MSS() as sct:
             sct_img = sct.grab(result['bbox'])
-            baseline_bgra = np.array(sct_img)
-            baseline = cv2.cvtColor(baseline_bgra, cv2.COLOR_BGRA2GRAY)
-            result['baseline'] = baseline.tolist()
+            current_img = np.array(sct_img)
+            gray = cv2.cvtColor(current_img, cv2.COLOR_BGRA2GRAY)
+            edges = cv2.Canny(gray, 50, 150)
+            result['baseline'] = edges.tolist()
             
     root.destroy()
     return result
@@ -102,6 +114,15 @@ class MacroEngine:
         self.current_step = None
         self.thread = None
         self.stop_event = threading.Event()
+        self.logs = []
+
+    def log_msg(self, msg: str):
+        ts = time.strftime("%H:%M:%S")
+        full_msg = f"[{ts}] {msg}"
+        print(full_msg)
+        self.logs.append(full_msg)
+        if len(self.logs) > 100:
+            self.logs.pop(0)
 
     def load_script(self, script_data: dict):
         self.script = script_data
@@ -144,10 +165,18 @@ class MacroEngine:
                 y = step_data.get("y", 0)
                 delay = step_data.get("delay", 1.0)
                 
+                self.log_msg(f"Clicking at (X:{x}, Y:{y})")
+                
                 ctypes.windll.user32.SetCursorPos(x, y)
-                time.sleep(0.05)
+                # Wait for game UI to register hover
+                time.sleep(0.2)
+                
+                # Mouse Down
                 ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                time.sleep(0.05)
+                # Human-like click duration
+                time.sleep(0.1)
+                
+                # Mouse Up
                 ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
                 
                 if self.stop_event.wait(delay):
@@ -171,17 +200,17 @@ class MacroEngine:
                         break
                         
                 try:
-                    baseline = np.array(baseline_data, dtype=np.uint8)
+                    baseline_edges = np.array(baseline_data, dtype=np.uint8)
                     with mss.MSS() as sct:
                         sct_img = sct.grab(bbox)
-                        current_img = np.array(sct_img)
-                        current_gray = cv2.cvtColor(current_img, cv2.COLOR_BGRA2GRAY)
+                        current_gray = cv2.cvtColor(np.array(sct_img), cv2.COLOR_BGRA2GRAY)
                         
-                        thresh_val = 150
-                        _, baseline_thresh = cv2.threshold(baseline, thresh_val, 255, cv2.THRESH_BINARY)
-                        _, current_thresh = cv2.threshold(current_gray, thresh_val, 255, cv2.THRESH_BINARY)
+                        if baseline_edges.shape != current_gray.shape:
+                            current_gray = cv2.resize(current_gray, (baseline_edges.shape[1], baseline_edges.shape[0]))
+                            
+                        current_edges = cv2.Canny(current_gray, 50, 150)
                         
-                        diff = cv2.absdiff(baseline_thresh, current_thresh)
+                        diff = cv2.absdiff(baseline_edges, current_edges)
                         num_chunks = max(5, diff.shape[1] // 10)
                         chunks = np.array_split(diff, num_chunks, axis=1)
                         max_chunk_diff = 0.0
@@ -191,10 +220,14 @@ class MacroEngine:
                             if chunk_diff > max_chunk_diff:
                                 max_chunk_diff = chunk_diff
                         
+                        self.log_msg(f"Image Check: Max Diff = {max_chunk_diff:.2f}% | Tol = {tolerance:.2f}%")
+                        
                         if max_chunk_diff > tolerance:
                             self.current_step = step_data.get("next_if_true")
                         else:
                             self.current_step = step_data.get("next_if_false")
+                            
+                        self.log_msg(f"Branching to: {self.current_step}")
                             
                 except Exception as e:
                     print(f"Image check error: {e}")
@@ -202,6 +235,17 @@ class MacroEngine:
                     
                 if self.stop_event.wait(0.1):
                     break
+            elif step_type == "keypress":
+                key = step_data.get("key", "enter")
+                delay = step_data.get("delay", 1.0)
+                
+                self.log_msg(f"Pressing key: '{key}'")
+                keyboard.press_and_release(key)
+                
+                if self.stop_event.wait(delay):
+                    break
+                    
+                self.current_step = step_data.get("next")
             else:
                 print(f"Error: Unknown step type '{step_type}'.")
                 break
@@ -222,9 +266,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SCRIPTS_DIR = "saved_macros"
+os.makedirs(SCRIPTS_DIR, exist_ok=True)
+
 engine = MacroEngine()
 
 class ScriptRequest(BaseModel):
+    script: Dict[str, Any]
+
+class SaveScriptRequest(BaseModel):
+    filename: str
     script: Dict[str, Any]
 
 class StartRequest(BaseModel):
@@ -234,6 +285,31 @@ class StartRequest(BaseModel):
 def load_script(req: ScriptRequest):
     engine.load_script(req.script)
     return {"message": "Script loaded successfully", "total_steps": len(req.script)}
+
+@app.post("/save_script_file")
+def save_script_file(req: SaveScriptRequest):
+    if not req.filename.endswith(".json"):
+        req.filename += ".json"
+    filepath = os.path.join(SCRIPTS_DIR, req.filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(req.script, f, indent=4)
+    return {"message": "Saved successfully"}
+
+@app.get("/list_scripts")
+def list_scripts():
+    if not os.path.exists(SCRIPTS_DIR):
+        return {"scripts": []}
+    files = [f for f in os.listdir(SCRIPTS_DIR) if f.endswith(".json")]
+    return {"scripts": files}
+
+@app.get("/get_script/{filename}")
+def get_script(filename: str):
+    filepath = os.path.join(SCRIPTS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data
 
 @app.post("/start")
 def start_engine(req: StartRequest):
@@ -257,6 +333,10 @@ def get_status():
         "is_running": engine.is_running,
         "current_step": engine.current_step
     }
+
+@app.get("/logs")
+def get_logs():
+    return {"logs": engine.logs}
 
 @app.get("/capture_coord")
 def capture_coord():

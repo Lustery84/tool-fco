@@ -7,23 +7,40 @@ function App() {
     { id: 'step_1', type: 'click', x: 100, y: 200, delay: 1.0, next: 'end', loopId: 'Loop_1' }
   ]);
   const [status, setStatus] = useState({ is_running: false, current_step: null });
-  const [logs, setLogs] = useState(["System initialized..."]);
+  const [serverLogs, setServerLogs] = useState([]);
   const [isWaiting, setIsWaiting] = useState(false);
   
-  const terminalRef = useRef(null);
+  const [saveFilename, setSaveFilename] = useState("my_macro");
+  const [scriptList, setScriptList] = useState([]);
+  const [selectedScript, setSelectedScript] = useState("");
 
-  const addLog = (msg) => {
-    setLogs(prev => [...prev.slice(-49), `${new Date().toLocaleTimeString()} - ${msg}`]);
-  };
+  const terminalRef = useRef(null);
 
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [serverLogs]);
+
+  const fetchScripts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/list_scripts`);
+      if (res.ok) {
+        const data = await res.json();
+        setScriptList(data.scripts || []);
+        if (data.scripts && data.scripts.length > 0 && !selectedScript) {
+          setSelectedScript(data.scripts[0]);
+        }
+      }
+    } catch (err) {}
+  };
 
   useEffect(() => {
-    const interval = setInterval(async () => {
+    fetchScripts();
+  }, []);
+
+  useEffect(() => {
+    const statusInterval = setInterval(async () => {
       try {
         const res = await fetch(`${API_BASE}/status`);
         if (res.ok) {
@@ -32,30 +49,40 @@ function App() {
         }
       } catch (err) {}
     }, 1000);
-    return () => clearInterval(interval);
+
+    const logsInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/logs`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerLogs(data.logs || []);
+        }
+      } catch (err) {}
+    }, 1000);
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(logsInterval);
+    };
   }, []);
 
   const handleStart = async () => {
     try {
-      const res = await fetch(`${API_BASE}/start`, {
+      await fetch(`${API_BASE}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ start_step: 'step_1' })
       });
-      const data = await res.json();
-      addLog(data.detail || data.message || 'START command sent.');
     } catch (e) {
-      addLog(`ERR: ${e.message}`);
+      console.error(e);
     }
   };
 
   const handleStop = async () => {
     try {
-      const res = await fetch(`${API_BASE}/stop`, { method: 'POST' });
-      const data = await res.json();
-      addLog(data.message || 'STOP command sent.');
+      await fetch(`${API_BASE}/stop`, { method: 'POST' });
     } catch (e) {
-      addLog(`ERR: ${e.message}`);
+      console.error(e);
     }
   };
 
@@ -67,15 +94,47 @@ function App() {
     });
     
     try {
-      const res = await fetch(`${API_BASE}/load_script`, {
+      await fetch(`${API_BASE}/load_script`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script })
       });
-      const data = await res.json();
-      addLog(`SCRIPT DEPLOYED: ${data.total_steps || 0} nodes sent.`);
     } catch (e) {
-      addLog(`ERR Deploying: ${e.message}`);
+      console.error(e);
+    }
+  };
+
+  const handleSaveFile = async () => {
+    const script = {};
+    nodes.forEach(n => {
+      const { id, ...rest } = n;
+      script[id] = rest;
+    });
+    try {
+      const res = await fetch(`${API_BASE}/save_script_file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: saveFilename, script })
+      });
+      if (res.ok) {
+        fetchScripts();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleLoadFile = async () => {
+    if (!selectedScript) return;
+    try {
+      const res = await fetch(`${API_BASE}/get_script/${selectedScript}`);
+      if (res.ok) {
+        const data = await res.json();
+        const loadedNodes = Object.keys(data).map(id => ({ id, ...data[id] }));
+        setNodes(loadedNodes);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -86,6 +145,8 @@ function App() {
       newNode = { ...newNode, x: 0, y: 0, delay: 1.0, next: 'end' };
     } else if (type === 'wait') {
       newNode = { ...newNode, type: 'click', x: 0, y: 0, delay: 5.0, next: 'end' };
+    } else if (type === 'keypress') {
+      newNode = { ...newNode, key: 'enter', delay: 1.0, next: 'end' };
     } else if (type === 'check_image') {
       newNode = { 
         ...newNode, 
@@ -98,7 +159,6 @@ function App() {
       };
     }
     setNodes([...nodes, newNode]);
-    addLog(`Added new node: ${id} [${type.toUpperCase()}]`);
   };
 
   const updateNode = (index, field, value) => {
@@ -106,42 +166,30 @@ function App() {
     updated[index][field] = value;
     setNodes(updated);
   };
-  
-  const updateNodeNested = (index, parent, field, value) => {
-    const updated = [...nodes];
-    updated[index][parent] = { ...updated[index][parent], [field]: value };
-    setNodes(updated);
-  };
 
   const removeNode = (index) => {
     const updated = [...nodes];
-    addLog(`Removed node: ${updated[index].id}`);
     updated.splice(index, 1);
     setNodes(updated);
   };
 
   const captureCoord = async (index) => {
     setIsWaiting(true);
-    addLog("Waiting for click on screen...");
     try {
       const res = await fetch(`${API_BASE}/capture_coord`);
       if(res.ok) {
         const data = await res.json();
         updateNode(index, 'x', data.x);
         updateNode(index, 'y', data.y);
-        addLog(`Captured coords: ${data.x}, ${data.y}`);
-      } else {
-        addLog("Capture cancelled.");
       }
     } catch (e) {
-      addLog(`ERR fetching coord: ${e.message}`);
+      console.error(e);
     }
     setIsWaiting(false);
   };
 
   const captureRegion = async (index) => {
     setIsWaiting(true);
-    addLog("Waiting for region snip...");
     try {
       const res = await fetch(`${API_BASE}/capture_region`);
       if(res.ok) {
@@ -150,12 +198,9 @@ function App() {
         updated[index].bbox = data.bbox;
         updated[index].baseline = data.baseline;
         setNodes(updated);
-        addLog(`Captured region: ${data.bbox.width}x${data.bbox.height}`);
-      } else {
-        addLog("Capture cancelled.");
       }
     } catch (e) {
-      addLog(`ERR fetching region: ${e.message}`);
+      console.error(e);
     }
     setIsWaiting(false);
   };
@@ -172,6 +217,26 @@ function App() {
   return (
      <div className="layout-grid">
        <div className="left-panel">
+         
+         <div className="pixel-box">
+           <h2>💾 Macro Storage</h2>
+           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+             <div className="property-group">
+               <label>NAME:</label> 
+               <input type="text" value={saveFilename} onChange={e => setSaveFilename(e.target.value)} style={{ width: '120px' }} />
+               <button className="action-btn" onClick={handleSaveFile}>[ SAVE ]</button>
+             </div>
+             <div style={{ width: '100%', margin: '5px 0', borderTop: '2px dashed #888' }}></div>
+             <div className="property-group">
+               <label>LOAD:</label> 
+               <select value={selectedScript} onChange={e => setSelectedScript(e.target.value)} style={{ width: '120px' }}>
+                 {scriptList.map(s => <option key={s} value={s}>{s}</option>)}
+               </select>
+               <button onClick={handleLoadFile} style={{ backgroundColor: '#F8D820' }}>[ LOAD ]</button>
+             </div>
+           </div>
+         </div>
+
          <div className="pixel-box">
            <h2>Control Panel</h2>
            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
@@ -186,9 +251,9 @@ function App() {
          
          <div className="pixel-box">
            <h2>Terminal Log</h2>
-           <div className="terminal-container" ref={terminalRef}>
-             {logs.map((l, i) => <div key={i} className="terminal-line">{l}</div>)}
-             <div className="terminal-line"><span className="cursor">_</span></div>
+           <div className="terminal-container" ref={terminalRef} style={{ color: '#39FF14' }}>
+             {serverLogs.map((l, i) => <div key={i} className="terminal-line" style={{ color: '#39FF14' }}>{l}</div>)}
+             <div className="terminal-line"><span className="cursor" style={{ color: '#39FF14' }}>_</span></div>
            </div>
          </div>
        </div>
@@ -203,6 +268,7 @@ function App() {
            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
              <button onClick={() => addNode('click')}>+ CLICK</button>
              <button onClick={() => addNode('wait')}>+ WAIT</button>
+             <button onClick={() => addNode('keypress')}>[ ⌨️ + KEYPRESS ]</button>
              <button onClick={() => addNode('check_image')}>+ CHECK IMAGE</button>
            </div>
 
@@ -227,6 +293,25 @@ function App() {
                            <div className="property-group"><label>X:</label> <input type="number" value={node.x} onChange={e => updateNode(i, 'x', parseInt(e.target.value) || 0)} /></div>
                            <div className="property-group"><label>Y:</label> <input type="number" value={node.y} onChange={e => updateNode(i, 'y', parseInt(e.target.value) || 0)} /></div>
                            <button className="action-btn" onClick={() => captureCoord(i)} disabled={isWaiting}>[ 🎯 CLICK TO CAPTURE ]</button>
+                           <div className="property-group"><label>DELAY(s):</label> <input type="number" step="0.1" value={node.delay} onChange={e => updateNode(i, 'delay', parseFloat(e.target.value) || 0)} /></div>
+                           <div className="property-group">
+                             <label>NEXT_ID:</label>
+                             <select value={node.next} onChange={e => updateNode(i, 'next', e.target.value)}>
+                               {nodeIds.map(id => <option key={id} value={id}>{id}</option>)}
+                             </select>
+                           </div>
+                         </>
+                       )}
+                       
+                       {node.type === 'keypress' && (
+                         <>
+                           <div className="property-group">
+                             <label>KEY:</label> 
+                             <input type="text" list="key-options" value={node.key} onChange={e => updateNode(i, 'key', e.target.value)} />
+                             <datalist id="key-options">
+                               <option value="enter" /><option value="esc" /><option value="space" /><option value="up" /><option value="down" /><option value="left" /><option value="right" /><option value="1" /><option value="2" /><option value="3" /><option value="f5" />
+                             </datalist>
+                           </div>
                            <div className="property-group"><label>DELAY(s):</label> <input type="number" step="0.1" value={node.delay} onChange={e => updateNode(i, 'delay', parseFloat(e.target.value) || 0)} /></div>
                            <div className="property-group">
                              <label>NEXT_ID:</label>
